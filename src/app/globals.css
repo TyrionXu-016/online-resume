@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #2563eb;
+  --ink: #111827;
+  --muted: #667085;
+  --border: #e7ebf1;
+  --canvas: #f8fafc;
+  --success: #16a34a;
+  --background: #ffffff;
+  --foreground: #111827;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-canvas: var(--canvas);
+  --color-success: var(--success);
+  --font-sans: var(--font-ibm-plex-sans);
+  --font-serif: var(--font-ibm-plex-serif);
+  --radius-input: 8px;
+  --radius-button: 9px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans), "PingFang SC", "Noto Sans SC", sans-serif;
+}
