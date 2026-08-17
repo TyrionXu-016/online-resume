@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { CreateResumeButton } from "@/components/create-resume-button";
 import { SignOutButton } from "@/components/sign-out-button";
 import { requireUserOrRedirect } from "@/modules/auth/service";
 
@@ -35,12 +36,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <span className="truncate text-[14px] font-medium">{user.email}</span>
           <div className="flex items-center gap-2">
             <SignOutButton />
-            <Link
-              href="/resumes"
-              className="rounded-[9px] bg-primary px-3 py-2 text-[13px] font-medium text-white"
-            >
-              创建新简历
-            </Link>
+            <CreateResumeButton />
           </div>
         </header>
         {children}
