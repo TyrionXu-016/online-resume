@@ -37,6 +37,7 @@ export function CredentialsForm({
 
   return (
     <form
+      action={formAction}
       className="mt-8 flex flex-col gap-4"
       onSubmit={form.handleSubmit((values) => {
         const data = new FormData();
@@ -48,6 +49,7 @@ export function CredentialsForm({
         });
       })}
     >
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <label className="text-[13px] font-medium text-ink">
         邮箱
         <input type="email" autoComplete="email" className={inputClassName} {...form.register("email")} />
@@ -96,6 +98,7 @@ export function EmailForm({
 
   return (
     <form
+      action={formAction}
       className="mt-8 flex flex-col gap-4"
       onSubmit={form.handleSubmit((values) => {
         const data = new FormData();
@@ -139,6 +142,7 @@ export function PasswordForm({
 
   return (
     <form
+      action={formAction}
       className="mt-8 flex flex-col gap-4"
       onSubmit={form.handleSubmit((values) => {
         const data = new FormData();
