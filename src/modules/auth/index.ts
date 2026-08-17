@@ -1,3 +1,14 @@
-export async function ensureUserProfile() {
-  throw new Error("AuthService.ensureUserProfile 尚未实现");
-}
+export {
+  assertAuthenticated,
+  isEmailVerified,
+  normalizeEmail,
+  profileFromAuthUser,
+} from "./profile";
+export {
+  ensureUserProfile,
+  getCurrentUser,
+  requireUser,
+  requireUserOrRedirect,
+  signOut,
+} from "./service";
+export type { CurrentUser } from "./service";

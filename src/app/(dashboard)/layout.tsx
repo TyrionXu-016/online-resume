@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { SignOutButton } from "@/components/sign-out-button";
+import { requireUserOrRedirect } from "@/modules/auth/service";
 
 const NAV = [
   { href: "/dashboard", label: "工作台" },
@@ -9,7 +11,9 @@ const NAV = [
   { href: "/settings", label: "账户设置" },
 ];
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+export default async function DashboardLayout({ children }: { children: ReactNode }) {
+  const user = await requireUserOrRedirect("/dashboard");
+
   return (
     <div className="flex min-h-full bg-canvas">
       <aside className="hidden w-[248px] shrink-0 border-r border-border bg-white md:block">
@@ -28,13 +32,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 items-center justify-between border-b border-border bg-white px-6">
-          <span className="text-[14px] font-medium">工作台</span>
-          <Link
-            href="/resumes"
-            className="rounded-[9px] bg-primary px-3 py-2 text-[13px] font-medium text-white"
-          >
-            创建新简历
-          </Link>
+          <span className="truncate text-[14px] font-medium">{user.email}</span>
+          <div className="flex items-center gap-2">
+            <SignOutButton />
+            <Link
+              href="/resumes"
+              className="rounded-[9px] bg-primary px-3 py-2 text-[13px] font-medium text-white"
+            >
+              创建新简历
+            </Link>
+          </div>
         </header>
         {children}
       </div>

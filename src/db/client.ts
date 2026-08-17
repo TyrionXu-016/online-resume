@@ -9,3 +9,11 @@ const client = databaseUrl
   : null;
 
 export const db = client ? drizzle(client, { schema }) : null;
+
+export function requireDb() {
+  if (!db) {
+    throw new Error("DATABASE_URL 未配置");
+  }
+
+  return db;
+}

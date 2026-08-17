@@ -19,6 +19,18 @@ export const ERROR_CODES = [
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
+export class AppError extends Error {
+  readonly code: ErrorCode;
+  readonly status: number;
+
+  constructor(code: ErrorCode, message: string, status = 400) {
+    super(message);
+    this.name = "AppError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 export type ApiErrorBody = {
   error: {
     code: ErrorCode;
