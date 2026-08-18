@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "@/lib/errors";
+import { CLASSIC_TEMPLATE_ID } from "@/modules/template";
 import { buildDefaultSections } from "./defaults";
 import { assertOwned } from "./owned";
 import { createResumeService } from "./service";
@@ -8,6 +9,16 @@ import type { NewResumeInput, NewSectionInput, ResumeRecord, ResumeStore, Sectio
 function createMemoryStore(): ResumeStore {
   const resumes = new Map<string, ResumeRecord>();
   const sections = new Map<string, SectionRecord[]>();
+
+  async function bumpVersion(userId: string, resumeId: string, expectedVersion: number) {
+    const current = await store.findOwned(userId, resumeId);
+    if (!current || current.contentVersion !== expectedVersion) {
+      return null;
+    }
+    const next = { ...current, contentVersion: expectedVersion + 1, updatedAt: new Date() };
+    resumes.set(resumeId, next);
+    return next.contentVersion;
+  }
 
   const store: ResumeStore = {
     async listActiveByUser(userId) {
@@ -25,8 +36,14 @@ function createMemoryStore(): ResumeStore {
     async listSections(resumeId) {
       return [...(sections.get(resumeId) ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
     },
+    async findSection(resumeId, sectionId) {
+      return (sections.get(resumeId) ?? []).find((section) => section.id === sectionId) ?? null;
+    },
     async slugExists(slug, excludeId) {
       return [...resumes.values()].some((row) => row.slug === slug && row.id !== excludeId);
+    },
+    async sectionTypeExists(resumeId, type) {
+      return (sections.get(resumeId) ?? []).some((section) => section.type === type);
     },
     async insertResume(input: NewResumeInput) {
       if ([...resumes.values()].some((row) => row.slug === input.slug)) {
@@ -74,6 +91,79 @@ function createMemoryStore(): ResumeStore {
 
       return created;
     },
+    async insertSection(input) {
+      const now = new Date("2026-08-17T12:00:00.000Z");
+      const section: SectionRecord = {
+        id: crypto.randomUUID(),
+        resumeId: input.resumeId,
+        type: input.type,
+        schemaVersion: input.schemaVersion,
+        sortOrder: input.sortOrder,
+        isVisible: input.isVisible,
+        data: input.data,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const current = sections.get(input.resumeId) ?? [];
+      current.push(section);
+      sections.set(input.resumeId, current);
+      return section;
+    },
+    async updateSectionDraft(userId, resumeId, sectionId, patch, expectedVersion) {
+      const nextVersion = await bumpVersion(userId, resumeId, expectedVersion);
+      if (nextVersion === null) {
+        return null;
+      }
+
+      const list = sections.get(resumeId) ?? [];
+      const index = list.findIndex((section) => section.id === sectionId);
+      if (index < 0) {
+        return null;
+      }
+
+      const current = list[index]!;
+      const updated: SectionRecord = {
+        ...current,
+        ...(patch.data !== undefined ? { data: patch.data } : {}),
+        ...(patch.isVisible !== undefined ? { isVisible: patch.isVisible } : {}),
+        updatedAt: new Date(),
+      };
+      list[index] = updated;
+      sections.set(resumeId, list);
+      return { contentVersion: nextVersion, section: updated };
+    },
+    async reorderSections(userId, resumeId, orderedSectionIds, expectedVersion) {
+      const nextVersion = await bumpVersion(userId, resumeId, expectedVersion);
+      if (nextVersion === null) {
+        return null;
+      }
+
+      const list = sections.get(resumeId) ?? [];
+      if (list.length !== orderedSectionIds.length) {
+        return null;
+      }
+
+      const byId = new Map(list.map((section) => [section.id, section]));
+      if (!orderedSectionIds.every((id) => byId.has(id))) {
+        return null;
+      }
+
+      const reordered = orderedSectionIds.map((id, index) => ({
+        ...byId.get(id)!,
+        sortOrder: index,
+        updatedAt: new Date(),
+      }));
+      sections.set(resumeId, reordered);
+      return { contentVersion: nextVersion };
+    },
+    async addSectionWithVersion(userId, resumeId, input, expectedVersion) {
+      const nextVersion = await bumpVersion(userId, resumeId, expectedVersion);
+      if (nextVersion === null) {
+        return null;
+      }
+      const section = await store.insertSection(input);
+      return { contentVersion: nextVersion, section };
+    },
     async updateMeta(userId, id, patch) {
       const current = await store.findOwned(userId, id);
       if (!current) {
@@ -102,6 +192,8 @@ function createMemoryStore(): ResumeStore {
 
   return store;
 }
+
+const defaultTemplateId = async () => CLASSIC_TEMPLATE_ID;
 
 describe("buildDefaultSections", () => {
   it("creates six empty MVP modules including PROFILE fields", () => {
@@ -140,18 +232,19 @@ describe("createResumeService", () => {
   const otherUserId = "22222222-2222-4222-8222-222222222222";
 
   it("creates a draft with six default sections", async () => {
-    const service = createResumeService(createMemoryStore());
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
     const resume = await service.create(userId, "ming@openstar.ltd");
 
     expect(resume.title).toBe("未命名简历");
     expect(resume.slug).toBe("ming");
     expect(resume.status).toBe("DRAFT");
     expect(resume.sections).toHaveLength(6);
+    expect(resume.templateId).toBe(CLASSIC_TEMPLATE_ID);
     expect(resume.publishedVersionId).toBeNull();
   });
 
   it("increments slug when the email local part is taken", async () => {
-    const service = createResumeService(createMemoryStore());
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
     const first = await service.create(userId, "ming@openstar.ltd");
     const second = await service.create(userId, "ming@openstar.ltd");
 
@@ -160,7 +253,7 @@ describe("createResumeService", () => {
   });
 
   it("duplicates draft sections with a new slug and unpublished state", async () => {
-    const service = createResumeService(createMemoryStore());
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
     const source = await service.create(userId, "ming@openstar.ltd");
     await service.updateMeta(userId, source.id, { title: "全栈简历", slug: "ming" });
 
@@ -176,7 +269,7 @@ describe("createResumeService", () => {
   });
 
   it("hides a resume after soft delete", async () => {
-    const service = createResumeService(createMemoryStore());
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
     const resume = await service.create(userId, "ming@openstar.ltd");
 
     await service.softDelete(userId, resume.id);
@@ -186,7 +279,7 @@ describe("createResumeService", () => {
   });
 
   it("rejects another user's resume as not found", async () => {
-    const service = createResumeService(createMemoryStore());
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
     const resume = await service.create(userId, "ming@openstar.ltd");
 
     await expect(service.getOwned(otherUserId, resume.id)).rejects.toMatchObject({
@@ -195,12 +288,89 @@ describe("createResumeService", () => {
   });
 
   it("rejects a taken slug when the user edits metadata", async () => {
-    const service = createResumeService(createMemoryStore());
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
     const first = await service.create(userId, "ming@openstar.ltd");
     const second = await service.create(userId, "li@openstar.ltd");
 
     await expect(
       service.updateMeta(userId, second.id, { title: second.title, slug: first.slug }),
     ).rejects.toMatchObject({ code: "RESUME_SLUG_TAKEN" });
+  });
+
+  it("saves section draft and bumps content version", async () => {
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
+    const resume = await service.create(userId, "ming@openstar.ltd");
+    const profile = resume.sections.find((section) => section.type === "PROFILE")!;
+
+    const result = await service.saveSectionDraft(userId, resume.id, profile.id, resume.contentVersion, {
+      fullName: "张三",
+      headline: "",
+      email: "",
+      phone: "",
+      location: "",
+      avatarAssetId: null,
+      website: "",
+      links: [],
+    });
+
+    expect(result.contentVersion).toBe(2);
+    const updated = await service.getOwned(userId, resume.id);
+    expect(updated.contentVersion).toBe(2);
+    expect(updated.sections.find((section) => section.id === profile.id)?.data.fullName).toBe("张三");
+  });
+
+  it("returns version conflict when expectedVersion is stale", async () => {
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
+    const resume = await service.create(userId, "ming@openstar.ltd");
+    const profile = resume.sections.find((section) => section.type === "PROFILE")!;
+
+    await service.saveSectionDraft(userId, resume.id, profile.id, resume.contentVersion, {
+      fullName: "张三",
+      headline: "",
+      email: "",
+      phone: "",
+      location: "",
+      avatarAssetId: null,
+      website: "",
+      links: [],
+    });
+
+    await expect(
+      service.saveSectionDraft(userId, resume.id, profile.id, resume.contentVersion, {
+        fullName: "李四",
+        headline: "",
+        email: "",
+        phone: "",
+        location: "",
+        avatarAssetId: null,
+        website: "",
+        links: [],
+      }),
+    ).rejects.toMatchObject({ code: "RESUME_VERSION_CONFLICT" });
+  });
+
+  it("reorders sections and bumps version", async () => {
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
+    const resume = await service.create(userId, "ming@openstar.ltd");
+    const reversed = [...resume.sections].reverse().map((section) => section.id);
+
+    const result = await service.reorderSections(userId, resume.id, resume.contentVersion, reversed);
+    expect(result.contentVersion).toBe(2);
+
+    const updated = await service.getOwned(userId, resume.id);
+    expect(updated.sections.map((section) => section.id)).toEqual(reversed);
+  });
+
+  it("adds a new section and rejects duplicate PROFILE", async () => {
+    const service = createResumeService(createMemoryStore(), defaultTemplateId);
+    const resume = await service.create(userId, "ming@openstar.ltd");
+
+    const added = await service.addSection(userId, resume.id, resume.contentVersion, "PROJECT");
+    expect(added.section?.type).toBe("PROJECT");
+    expect(added.contentVersion).toBe(2);
+
+    await expect(
+      service.addSection(userId, resume.id, added.contentVersion, "PROFILE"),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 });
