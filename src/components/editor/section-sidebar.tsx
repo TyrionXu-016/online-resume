@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -92,6 +93,33 @@ export function SectionSidebar() {
   const setConflictError = useEditorStore((state) => state.setConflictError);
   const resumeId = useEditorStore((state) => state.resumeId);
   const contentVersion = useEditorStore((state) => state.contentVersion);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!addMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {
+        setAddMenuOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setAddMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [addMenuOpen]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -128,6 +156,7 @@ export function SectionSidebar() {
   }
 
   async function handleAddSection(type: SectionType) {
+    setAddMenuOpen(false);
     const result = await addSectionAction({
       resumeId,
       expectedVersion: contentVersion,
@@ -159,23 +188,35 @@ export function SectionSidebar() {
     <aside className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-[13px] font-semibold text-ink">编辑模块</h2>
-        <details className="relative">
-          <summary className="cursor-pointer list-none rounded-[9px] border border-border px-2 py-1 text-[12px] text-ink">
+        <div className="relative" ref={addMenuRef}>
+          <button
+            type="button"
+            className="rounded-[9px] border border-border px-2 py-1 text-[12px] text-ink"
+            aria-expanded={addMenuOpen}
+            aria-haspopup="menu"
+            onClick={() => setAddMenuOpen((open) => !open)}
+          >
             ＋ 添加模块
-          </summary>
-          <div className="absolute right-0 z-10 mt-2 w-44 rounded-[10px] border border-border bg-white p-2 shadow-sm">
-            {addableTypes.map((type) => (
-              <button
-                key={type}
-                type="button"
-                className="block w-full rounded-[8px] px-2 py-2 text-left text-[12px] hover:bg-canvas"
-                onClick={() => void handleAddSection(type)}
-              >
-                {SECTION_TYPE_LABELS[type]}
-              </button>
-            ))}
-          </div>
-        </details>
+          </button>
+          {addMenuOpen ? (
+            <div
+              role="menu"
+              className="absolute right-0 z-10 mt-2 w-44 rounded-[10px] border border-border bg-white p-2 shadow-sm"
+            >
+              {addableTypes.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  role="menuitem"
+                  className="block w-full rounded-[8px] px-2 py-2 text-left text-[12px] hover:bg-canvas"
+                  onClick={() => void handleAddSection(type)}
+                >
+                  {SECTION_TYPE_LABELS[type]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => void handleDragEnd(event)}>
